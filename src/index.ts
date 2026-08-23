@@ -26,6 +26,13 @@
  *
  * Multi-server: one shared display; each provider's `streamSimple` tees its
  * own SSE into it, so the slot reflects whichever request is active.
+ *
+ * The `before_provider_request` handler scopes `return_progress: true` onto
+ * requests whose model's provider is a `llama-server=<url>` provider
+ * (scoped by provider, not model id: the payload carries the id but not
+ * the provider, and `ctx.model.provider` is the reliable signal).
+ * Without the flag, llama.cpp never emits `prompt_progress`, so ticket 02's
+ * bar would never move.
  */
 import { getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -87,6 +94,21 @@ export function createProgressEntry(deps: ProgressEntryDeps = {}) {
 				streamSimple: createProgressStreamSimple(display),
 			});
 		}
+
+		// llama.cpp only emits `prompt_progress` when the request asks for
+		// it, so scope `return_progress: true` to llama-server providers
+		// (ticket 02's prefill bar is driven by that SSE field). Other
+		// providers' payloads pass through unchanged. The handler's return
+		// value replaces the payload for downstream handlers and the request.
+		pi.on("before_provider_request", (event, ctx) => {
+			// `ctx.model` is the model the request is about to use; for
+			// llama.cpp models its provider is `llama-server=<url>`.
+			const provider = ctx.model?.provider;
+			if (provider && provider.startsWith("llama-server=")) {
+				return { ...(event.payload as Record<string, unknown>), return_progress: true };
+			}
+			return event.payload;
+		});
 
 		// Attach on events that carry the UI context, so the keyed slot is
 		// live for the whole turn.
