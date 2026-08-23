@@ -288,8 +288,8 @@ describe("ThinkingProgressTracker", () => {
 
 describe("WorkingMessageDisplay", () => {
 	function makeCtx() {
-		const setStatus = vi.fn();
-		return { ctx: { ui: { setStatus }, hasUI: true }, setStatus };
+		const setWorkingMessage = vi.fn();
+		return { ctx: { ui: { setWorkingMessage }, hasUI: true }, setWorkingMessage };
 	}
 
 	it("is a no-op until attached", () => {
@@ -300,64 +300,65 @@ describe("WorkingMessageDisplay", () => {
 		expect(true).toBe(true);
 	});
 
-	it("writes the progress message to the keyed status slot and clears it on null", () => {
+	it("writes the progress message to the working message line and clears it on null", () => {
 		const display = new WorkingMessageDisplay();
-		const { ctx, setStatus } = makeCtx();
+		const { ctx, setWorkingMessage } = makeCtx();
 		display.attach(ctx);
 		display.set("Prefilling... 050%");
-		expect(setStatus).toHaveBeenLastCalledWith(WorkingMessageDisplay.SLOT_KEY, "Prefilling... 050%");
+		expect(setWorkingMessage).toHaveBeenLastCalledWith("Prefilling... 050%");
 		display.set(null);
-		expect(setStatus).toHaveBeenLastCalledWith(WorkingMessageDisplay.SLOT_KEY, undefined);
+		// undefined restores pi's default working message text.
+		expect(setWorkingMessage).toHaveBeenLastCalledWith(undefined);
 	});
 
-	it("writes only to the keyed slot, never the shared working message", () => {
+	it("writes only to the working message, never the status footer", () => {
 		const display = new WorkingMessageDisplay();
 		const setStatus = vi.fn();
 		const setWorkingMessage = vi.fn();
-		// A ctx whose ui exposes both: the display must use only the keyed slot.
+		// A ctx whose ui exposes both: the display must use only the working message.
 		const ui = { setStatus, setWorkingMessage };
 		display.attach({ ui, hasUI: true });
 		display.set("Prefilling...");
 		display.set(null);
-		expect(setStatus).toHaveBeenCalledTimes(2);
-		expect(setWorkingMessage).not.toHaveBeenCalled();
+		expect(setWorkingMessage).toHaveBeenCalledTimes(2);
+		expect(setStatus).not.toHaveBeenCalled();
 	});
 
 	it("dedupes identical messages", () => {
 		const display = new WorkingMessageDisplay();
-		const { ctx, setStatus } = makeCtx();
+		const { ctx, setWorkingMessage } = makeCtx();
 		display.attach(ctx);
 		display.set("Prefilling... 050%");
 		display.set("Prefilling... 050%");
-		expect(setStatus).toHaveBeenCalledTimes(1);
+		expect(setWorkingMessage).toHaveBeenCalledTimes(1);
 	});
 
 	it("does nothing when the UI is not available", () => {
 		const display = new WorkingMessageDisplay();
-		const setStatus = vi.fn();
-		display.attach({ ui: { setStatus }, hasUI: false });
+		const setWorkingMessage = vi.fn();
+		display.attach({ ui: { setWorkingMessage }, hasUI: false });
 		display.set("Prefilling... 050%");
-		expect(setStatus).not.toHaveBeenCalled();
+		expect(setWorkingMessage).not.toHaveBeenCalled();
 	});
 
 	it("ignores updates after finish() until the next start()", () => {
 		const display = new WorkingMessageDisplay();
-		const { ctx, setStatus } = makeCtx();
+		const { ctx, setWorkingMessage } = makeCtx();
 		display.attach(ctx);
 
 		display.start();
 		display.set("Prefilling...");
 		display.finish();
 		// Two writes: the message, then the clear from finish().
-		expect(setStatus).toHaveBeenCalledTimes(2);
-		expect(setStatus).toHaveBeenLastCalledWith(WorkingMessageDisplay.SLOT_KEY, undefined);
+		expect(setWorkingMessage).toHaveBeenCalledTimes(2);
+		expect(setWorkingMessage).toHaveBeenLastCalledWith(undefined);
 
 		// The display is settled: updates are ignored until start().
 		display.set("Prefilling... 050%");
-		expect(setStatus).toHaveBeenCalledTimes(2);
+		expect(setWorkingMessage).toHaveBeenCalledTimes(2);
 
 		display.start();
 		display.set("Prefilling... 050%");
-		expect(setStatus).toHaveBeenLastCalledWith(WorkingMessageDisplay.SLOT_KEY, "Prefilling... 050%");
+		expect(setWorkingMessage).toHaveBeenLastCalledWith("Prefilling... 050%");
 	});
 });

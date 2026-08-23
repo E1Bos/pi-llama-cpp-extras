@@ -131,11 +131,14 @@ describe("createProgressFetch", () => {
 });
 
 describe("createProgressStreamSimple", () => {
-	it("streams the response, drives the keyed slot from prefill progress, and clears it on completion", async () => {
+	it("streams the response, drives the working message from prefill progress, and clears it on completion", async () => {
 		const baseFetch = vi.fn(async () => makeSseResponse(SSE));
 		const display = new WorkingMessageDisplay();
-		const statusWrites: Array<[string, string | undefined]> = [];
-		display.attach({ ui: { setStatus: (key, text) => statusWrites.push([key, text]) }, hasUI: true });
+		const workingMessages: Array<string | undefined> = [];
+		display.attach({
+			ui: { setWorkingMessage: (message) => workingMessages.push(message) },
+			hasUI: true,
+		});
 
 		const streamSimple = createProgressStreamSimple(display, baseFetch);
 		const stream = streamSimple(makeModel(), makeContext(), { apiKey: "sk-test" });
@@ -147,16 +150,14 @@ describe("createProgressStreamSimple", () => {
 		expect(result.stopReason).toBe("stop");
 		expect(baseFetch).toHaveBeenCalledTimes(1);
 
-		// The tracker saw the prefill progress and drove the keyed slot.
-		const progressWrites = statusWrites.filter(
-			([key, text]) =>
-				key === WorkingMessageDisplay.SLOT_KEY &&
-				typeof text === "string" &&
-				text.startsWith("Prefilling..."),
+		// The tracker saw the prefill progress and drove the working message line.
+		const progressWrites = workingMessages.filter(
+			(text) => typeof text === "string" && text.startsWith("Prefilling..."),
 		);
 		expect(progressWrites.length).toBe(2); // the 0% and 50% events
-		// The slot is cleared (undefined) once the stream settles.
-		expect(statusWrites.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+		// The line is cleared (undefined) once the stream settles, restoring
+		// pi's default working message text.
+		expect(workingMessages.at(-1)).toBeUndefined();
 	});
 
 	it("does not require a UI to be attached", async () => {
@@ -179,8 +180,11 @@ describe("createProgressStreamSimple", () => {
 			"data: [DONE]\n\n";
 		const baseFetch = vi.fn(async () => makeSseResponse(sse));
 		const display = new WorkingMessageDisplay();
-		const statusWrites: Array<[string, string | undefined]> = [];
-		display.attach({ ui: { setStatus: (key, text) => statusWrites.push([key, text]) }, hasUI: true });
+		const workingMessages: Array<string | undefined> = [];
+		display.attach({
+			ui: { setWorkingMessage: (message) => workingMessages.push(message) },
+			hasUI: true,
+		});
 
 		const streamSimple = createProgressStreamSimple(display, baseFetch);
 		const stream = streamSimple(makeModel(), makeContext(), { apiKey: "sk-test" });
@@ -190,24 +194,28 @@ describe("createProgressStreamSimple", () => {
 		expect(result.content.some((b) => b.type === "text" && b.text === "Hello world")).toBe(true);
 		expect(result.content.some((b) => b.type === "thinking")).toBe(true);
 
-		// The keyed slot is phase-exclusive: the prefill bar shows first, then
-		// the thinking counter, and the slot is cleared (undefined) once the
-		// stream settles.
-		const slotTexts: Array<string | undefined> = statusWrites
-			.filter(([key]) => key === WorkingMessageDisplay.SLOT_KEY)
-			.map(([, text]) => text);
-		const prefillIdx = slotTexts.findIndex((m) => typeof m === "string" && m.startsWith("Prefilling..."));
-		const thinkingIdx = slotTexts.findIndex((m) => typeof m === "string" && m.startsWith("Working..."));
+		// The working message line is phase-exclusive: the prefill bar shows
+		// first, then the thinking counter, and the line is cleared (undefined)
+		// once the stream settles.
+		const prefillIdx = workingMessages.findIndex(
+			(m) => typeof m === "string" && m.startsWith("Prefilling..."),
+		);
+		const thinkingIdx = workingMessages.findIndex(
+			(m) => typeof m === "string" && m.startsWith("Working..."),
+		);
 		expect(prefillIdx).toBeGreaterThanOrEqual(0);
 		expect(thinkingIdx).toBeGreaterThan(prefillIdx);
-		expect(statusWrites.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+		expect(workingMessages.at(-1)).toBeUndefined();
 	});
 
-	it("clears the slot when the request is aborted", async () => {
+	it("clears the working message when the request is aborted", async () => {
 		const baseFetch = vi.fn(async () => makeSseResponse(SSE));
 		const display = new WorkingMessageDisplay();
-		const statusWrites: Array<[string, string | undefined]> = [];
-		display.attach({ ui: { setStatus: (key, text) => statusWrites.push([key, text]) }, hasUI: true });
+		const workingMessages: Array<string | undefined> = [];
+		display.attach({
+			ui: { setWorkingMessage: (message) => workingMessages.push(message) },
+			hasUI: true,
+		});
 
 		const controller = new AbortController();
 		const streamSimple = createProgressStreamSimple(display, baseFetch);
@@ -219,7 +227,7 @@ describe("createProgressStreamSimple", () => {
 
 		const result = await stream.result();
 		expect(result.stopReason).toBe("aborted");
-		// The stream settles via the error event, so the slot is cleared.
-		expect(statusWrites.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+		// The stream settles via the error event, so the line is cleared.
+		expect(workingMessages.at(-1)).toBeUndefined();
 	});
 });

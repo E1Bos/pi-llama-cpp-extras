@@ -1,8 +1,8 @@
 /**
  * Extension entry: registers a teed `streamSimple` on the `llama-server=<url>`
  * providers that pi-llama-cpp creates, and attaches the shared progress
- * display, so the progress extra works alongside pi-llama-cpp without
- * modifying it.
+ * display to pi's working message line - the `\u243C Working...` spinner line -
+ * so the progress extra works alongside pi-llama-cpp without modifying it.
  *
  * Upstream pi-llama-cpp registers one provider per server,
  * `llama-server=<baseUrl>`, with `{name, baseUrl, api, apiKey, models}` and
@@ -25,7 +25,8 @@
  * discovery surface.
  *
  * Multi-server: one shared display; each provider's `streamSimple` tees its
- * own SSE into it, so the slot reflects whichever request is active.
+ * own SSE into it, so the working message reflects whichever request is
+ * active.
  *
  * The `before_provider_request` handler scopes `return_progress: true` onto
  * requests whose model's provider is a `llama-server=<url>` provider
@@ -82,8 +83,8 @@ export function createProgressEntry(deps: ProgressEntryDeps = {}) {
 			),
 		);
 
-		// One shared display for all providers (multi-server: the slot reflects
-		// whichever request is active).
+		// One shared display for all providers (multi-server: the working
+		// message reflects whichever request is active).
 		const display = new WorkingMessageDisplay();
 
 		// Overlay the teed streamSimple on pi-llama-cpp's base provider config,
@@ -110,8 +111,8 @@ export function createProgressEntry(deps: ProgressEntryDeps = {}) {
 			return event.payload;
 		});
 
-		// Attach on events that carry the UI context, so the keyed slot is
-		// live for the whole turn.
+		// Attach on events that carry the UI context, so the working message
+		// line is live for the whole turn.
 		pi.on("before_agent_start", (_event, ctx) => display.attach(ctx));
 		pi.on("turn_start", (_event, ctx) => display.attach(ctx));
 	};
