@@ -5,17 +5,21 @@ import type {
 	Model,
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	BeforeProviderRequestEvent,
+	ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import entry, { createProgressEntry } from "../src/index";
 import { WorkingMessageDisplay } from "../src/progress";
 
 // --- fakes -----------------------------------------------------------------
 
-type StatusCtx = {
-	ui: { setStatus: (key: string, text: string | undefined) => void };
-	hasUI: boolean;
+type FakeCtx = {
+	ui?: { setStatus: (key: string, text: string | undefined) => void };
+	hasUI?: boolean;
+	model?: { provider: string } | undefined;
 };
-type EventHandler = (event: unknown, ctx: StatusCtx) => void;
+type EventHandler = (event: unknown, ctx: FakeCtx) => unknown;
 
 function makeFakePi() {
 	const registrations: Array<{ id: string; config: Record<string, unknown> }> = [];
@@ -134,7 +138,7 @@ describe("extension entry", () => {
 		})(pi);
 
 		const statuses: Array<[string, string | undefined]> = [];
-		const ctx: StatusCtx = {
+		const ctx: FakeCtx = {
 			ui: { setStatus: (key, text) => statuses.push([key, text]) },
 			hasUI: true,
 		};
@@ -164,6 +168,50 @@ describe("extension entry", () => {
 		).toBe(true);
 		// The slot is cleared once the stream settles.
 		expect(statuses.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+	});
+
+	it("scopes return_progress: true onto llama-server requests and passes others through", () => {
+		const { pi, handlers } = makeFakePi();
+		createProgressEntry({
+			projectUrl: () => null,
+			globalUrl: () => null,
+			env: {},
+		})(pi);
+
+		const handler = handlers.get("before_provider_request");
+		expect(handler).toBeDefined();
+
+		// A llama-server request gets the flag on a new payload object.
+		const llamaEvent: BeforeProviderRequestEvent = {
+			type: "before_provider_request",
+			payload: { messages: [] },
+		};
+		const result = handler!(llamaEvent, {
+			model: { provider: "llama-server=http://127.0.0.1:8080" },
+		});
+		expect(result).toEqual({ messages: [], return_progress: true });
+		// The original payload is not mutated.
+		expect(llamaEvent.payload).toEqual({ messages: [] });
+
+		// Non-llama requests pass through unchanged (identity).
+		const foreignEvent: BeforeProviderRequestEvent = {
+			type: "before_provider_request",
+			payload: { messages: [] },
+		};
+		expect(handler!(foreignEvent, { model: { provider: "anthropic" } })).toBe(
+			foreignEvent.payload,
+		);
+
+		// A missing model passes through unchanged.
+		expect(handler!(foreignEvent, { model: undefined })).toBe(foreignEvent.payload);
+
+		// The prefix match is anchored: a provider that merely contains
+		// `llama-server=` is not a llama-server provider.
+		expect(
+			handler!(foreignEvent, {
+				model: { provider: "x-llama-server=http://127.0.0.1:8080" },
+			}),
+		).toBe(foreignEvent.payload);
 	});
 
 	it("runs the default entry against a capturing pi without throwing", () => {
