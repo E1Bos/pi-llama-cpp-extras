@@ -6,7 +6,11 @@ import type {
 	AssistantMessageEventStream,
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import { PrefillProgressTracker, WorkingMessageDisplay } from "./progress";
+import {
+	PrefillProgressTracker,
+	ThinkingProgressTracker,
+	WorkingMessageDisplay,
+} from "./progress";
 
 /**
  * Tee an SSE ReadableStream: every chunk is passed through unchanged (so the
@@ -72,8 +76,15 @@ export function createProgressFetch(
 }
 
 /**
- * Build a `streamSimple` handler that tees the SSE body to the given display.
+ * Build a `streamSimple` handler that tees the provider's raw SSE to drive
+ * the keyed progress slot through the generation phases: the prefill progress
+ * bar, then the thinking counter, then the default. The built-in
+ * openai-completions stream is reused; the only difference is the injected
+ * `fetch`, which tees the response body to both trackers. `baseFetch` is
+ * injectable for tests (defaults to `globalThis.fetch`).
  *
+ * The phases never overlap (prefill, then thinking, then answer), so the two
+ * trackers write the same keyed slot without conflict; the later phase wins.
  * Each call creates fresh trackers (state is per-request, so concurrent
  * requests don't interfere) and wires them to the shared display. The
  * built-in OpenAI-completions streamSimple still assembles the response from
@@ -85,12 +96,8 @@ export function createProgressFetch(
  * with `api: "openai-completions"` (ticket 04).
  *
  * `stream.result()` resolves on the stream's terminal event (done, error, or
- * the error event pushed on abort), so the slot is cleared on completion,
- * error, and abort alike.
- *
- * Ticket 03 (thinking progress) adds a `ThinkingProgressTracker` fed from the
- * same `onChunk`/`onReset` callbacks; ticket 02 feeds only the prefill
- * tracker.
+ * the error event pushed on abort), so both trackers are finished and the
+ * slot is cleared on completion, error, and abort alike.
  */
 export function createProgressStreamSimple(
 	display: WorkingMessageDisplay,
@@ -102,12 +109,15 @@ export function createProgressStreamSimple(
 ) => AssistantMessageEventStream {
 	return (model: Model<Api>, context: Context, options?: SimpleStreamOptions) => {
 		const prefill = new PrefillProgressTracker((message) => display.set(message));
+		const thinking = new ThinkingProgressTracker((message) => display.set(message));
 		const fetch = createProgressFetch(
 			(chunk) => {
 				prefill.feed(chunk);
+				thinking.feed(chunk);
 			},
 			() => {
 				prefill.reset();
+				thinking.reset();
 			},
 			baseFetch,
 		);
@@ -119,6 +129,7 @@ export function createProgressStreamSimple(
 		);
 		void stream.result().then(() => {
 			prefill.finish();
+			thinking.finish();
 			display.finish();
 		});
 		return stream;

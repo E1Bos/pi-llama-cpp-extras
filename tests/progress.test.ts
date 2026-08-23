@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { PrefillProgressTracker, WorkingMessageDisplay } from "../src/progress";
+import {
+	PrefillProgressTracker,
+	ThinkingProgressTracker,
+	WorkingMessageDisplay,
+} from "../src/progress";
 
 const FILL = "█";
 const EMPTY = "░";
@@ -140,6 +144,147 @@ function parseDuration(s: string): number {
 	if (sec) return Number(sec[1]);
 	throw new Error(`unparseable duration: ${s}`);
 }
+
+function reasoningLine(
+	text: string,
+	field: "reasoning_content" | "reasoning" | "reasoning_text" = "reasoning_content",
+): string {
+	return sseLine({ choices: [{ delta: { [field]: text } }] });
+}
+
+function contentLine(text: string): string {
+	return sseLine({ choices: [{ delta: { content: text } }] });
+}
+
+describe("ThinkingProgressTracker", () => {
+	it("emits nothing until a reasoning delta arrives", () => {
+		const onUpdate = vi.fn();
+		const tracker = new ThinkingProgressTracker(onUpdate);
+		feed(tracker, sseLine({ choices: [{ delta: { content: "hi" } }] }));
+		feed(tracker, progressEvent(1000, 0, 0));
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it("renders the ticket example: Working... ~1.2k tok · 8s", () => {
+		const messages: (string | null)[] = [];
+		let t = 0;
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => t);
+		feed(tracker, reasoningLine("a".repeat(4000))); // 1000 tokens at t=0
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+		t = 8000;
+		feed(tracker, reasoningLine("b".repeat(800))); // 4800 total -> 1200 tokens
+		expect(messages.at(-1)).toBe("Working... ~1.2k tok · 8s");
+	});
+
+	it("estimates tokens from accumulated volume (~4 chars per token)", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("abcd")); // 4 chars -> 1 token
+		expect(messages.at(-1)).toBe("Working... ~1 tok · 0s");
+		feed(tracker, reasoningLine("efgh")); // 8 chars -> 2 tokens
+		expect(messages.at(-1)).toBe("Working... ~2 tok · 0s");
+	});
+
+	it("formats the token count with a k suffix at 1000+", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000))); // 1000 tokens
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+		feed(tracker, reasoningLine("a".repeat(400))); // 1100 tokens
+		expect(messages.at(-1)).toBe("Working... ~1.1k tok · 0s");
+	});
+
+	it("formats elapsed thinking time in minutes past 60s", () => {
+		const messages: (string | null)[] = [];
+		let t = 0;
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => t);
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		t = 65000;
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		expect(messages.at(-1)).toBe("Working... ~2k tok · 1m 5s");
+	});
+
+	it("clears the counter (null) when the answer starts and ignores later reasoning", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		feed(tracker, contentLine("Hello")); // answer starts
+		expect(messages.at(-1)).toBeNull();
+		feed(tracker, reasoningLine("b".repeat(4000))); // ignored after the answer
+		expect(messages.at(-1)).toBeNull();
+	});
+
+	it("treats an empty content delta as not the answer start", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		feed(tracker, sseLine({ choices: [{ delta: { content: "" } }] }));
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+	});
+
+	it("reads the first non-empty reasoning field (reasoning_content priority)", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000), "reasoning")); // not reasoning_content
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+	});
+
+	it("reassembles a reasoning delta split across chunk boundaries", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		const bytes = new TextEncoder().encode(reasoningLine("a".repeat(4000)));
+		const half = Math.floor(bytes.length / 2);
+		tracker.feed(bytes.slice(0, half));
+		expect(messages).toEqual([]);
+		tracker.feed(bytes.slice(half));
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+	});
+
+	it("ignores non-JSON and non-reasoning data lines", () => {
+		const onUpdate = vi.fn();
+		const tracker = new ThinkingProgressTracker(onUpdate);
+		feed(tracker, "data: not-json\n\n");
+		feed(tracker, "data: [DONE]\n\n");
+		feed(tracker, sseLine({ choices: [] }));
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it("restores the default message on finish even if the answer never started", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		tracker.finish();
+		expect(messages.at(-1)).toBeNull();
+	});
+
+	it("resets state so a retried request starts a fresh thinking timer", () => {
+		const messages: (string | null)[] = [];
+		let t = 0;
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => t);
+		t = 5000;
+		feed(tracker, reasoningLine("a".repeat(4000))); // started at t=5000
+		t = 13000;
+		feed(tracker, reasoningLine("a".repeat(4000))); // elapsed 8s
+		expect(messages.at(-1)).toBe("Working... ~2k tok · 8s");
+		tracker.reset();
+		t = 0;
+		feed(tracker, reasoningLine("a".repeat(4000))); // fresh start at t=0
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+	});
+
+	it("shows generic Working... when a tool call delta arrives", () => {
+		const messages: (string | null)[] = [];
+		const tracker = new ThinkingProgressTracker((m) => messages.push(m), () => 0);
+		feed(tracker, reasoningLine("a".repeat(4000)));
+		expect(messages.at(-1)).toBe("Working... ~1k tok · 0s");
+		const toolCallLine = sseLine({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "foo", arguments: "" } }] } }] });
+		feed(tracker, toolCallLine);
+		expect(messages.at(-1)).toBe("Working...");
+		// Subsequent reasoning deltas are ignored while tool call is active
+		feed(tracker, reasoningLine("b".repeat(4000)));
+		expect(messages.at(-1)).toBe("Working...");
+	});
+});
 
 describe("WorkingMessageDisplay", () => {
 	function makeCtx() {

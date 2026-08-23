@@ -168,6 +168,41 @@ describe("createProgressStreamSimple", () => {
 		expect(result.content).toEqual([{ type: "text", text: "Hello world" }]);
 	});
 
+	it("shows the thinking counter after prefill and clears it when the answer starts", async () => {
+		const sse =
+			chunk({}, { total: 1000, processed: 0, time_ms: 0 }) +
+			chunk({}, { total: 1000, processed: 1000, time_ms: 1000 }) +
+			chunk({ reasoning_content: "a".repeat(4000) }) +
+			chunk({ content: "Hello" }) +
+			chunk({ content: " world" }) +
+			chunk({}, undefined, "stop") +
+			"data: [DONE]\n\n";
+		const baseFetch = vi.fn(async () => makeSseResponse(sse));
+		const display = new WorkingMessageDisplay();
+		const statusWrites: Array<[string, string | undefined]> = [];
+		display.attach({ ui: { setStatus: (key, text) => statusWrites.push([key, text]) }, hasUI: true });
+
+		const streamSimple = createProgressStreamSimple(display, baseFetch);
+		const stream = streamSimple(makeModel(), makeContext(), { apiKey: "sk-test" });
+		const result = await stream.result();
+
+		// The response content carries both the thinking block and the answer.
+		expect(result.content.some((b) => b.type === "text" && b.text === "Hello world")).toBe(true);
+		expect(result.content.some((b) => b.type === "thinking")).toBe(true);
+
+		// The keyed slot is phase-exclusive: the prefill bar shows first, then
+		// the thinking counter, and the slot is cleared (undefined) once the
+		// stream settles.
+		const slotTexts: Array<string | undefined> = statusWrites
+			.filter(([key]) => key === WorkingMessageDisplay.SLOT_KEY)
+			.map(([, text]) => text);
+		const prefillIdx = slotTexts.findIndex((m) => typeof m === "string" && m.startsWith("Prefilling..."));
+		const thinkingIdx = slotTexts.findIndex((m) => typeof m === "string" && m.startsWith("Working..."));
+		expect(prefillIdx).toBeGreaterThanOrEqual(0);
+		expect(thinkingIdx).toBeGreaterThan(prefillIdx);
+		expect(statusWrites.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+	});
+
 	it("clears the slot when the request is aborted", async () => {
 		const baseFetch = vi.fn(async () => makeSseResponse(SSE));
 		const display = new WorkingMessageDisplay();
