@@ -2,7 +2,7 @@
 
 While the model emits reasoning tokens, show a live counter (estimated thinking tokens + elapsed thinking time) in the keyed UI slot.
 
-Status: open
+Status: done
 
 Depends on ticket 02 (it reuses ticket 02's teed stream and display, and generalises the teed fetch so one stream drives both the prefill and the thinking trackers).
 
@@ -17,10 +17,10 @@ Port `ThinkingProgressTracker` from **pi-llama-one** (`~/Code/pi-llama-one`) / t
 
 ## Acceptance
 
-- [ ] During the thinking phase, the UI slot shows `Working... ~1.2k tok · 8s`.
-- [ ] The token count is estimated from the accumulated reasoning-delta volume (~4 chars per token; llama.cpp gives no exact per-phase count).
-- [ ] Phase order is prefill, then thinking, then the answer; they never overlap, and the counter clears when the answer starts.
-- [ ] While the model is making a tool call, the UI slot shows `Working...` without thinking stats (the stats do not freeze).
+- [x] During the thinking phase, the UI slot shows `Working... ~1.2k tok · 8s`.
+- [x] The token count is estimated from the accumulated reasoning-delta volume (~4 chars per token; llama.cpp gives no exact per-phase count).
+- [x] Phase order is prefill, then thinking, then the answer; they never overlap, and the counter clears when the answer starts.
+- [x] While the model is making a tool call, the UI slot shows `Working...` without thinking stats (the stats do not freeze).
 
 ## TDD seams
 
@@ -34,3 +34,15 @@ Port `ThinkingProgressTracker` from **pi-llama-one** (`~/Code/pi-llama-one`) / t
 - **Elapsed time:** client-timed from the first reasoning delta (injected `now()`), since no server field anchors the thinking start.
 
 ## Comments
+
+### 2026-08-23 — implemented (commit `d485b86`)
+
+Lifted `ThinkingProgressTracker` from the fork's HEAD (`cd6956e`), verbatim except doc wording (see deviations). TDD in two red→green rounds: tracker tests (13, lifted from the fork) → the class; phase-exclusive integration test → the two-tracker wiring. 39/39 tests, `tsc --noEmit` clean.
+
+**Deviations from the literal reference:**
+
+1. **Doc wording only.** The fork's class doc says "renders a live counter in the working message"; ours says "in the progress display" / keyed slot, consistent with ticket 02's keyed-slot deviation. The logic is byte-for-byte the fork's.
+2. **Integration test adapted to the keyed slot.** The fork's test spies on `setWorkingMessage`; ours collects `setStatus` writes under `WorkingMessageDisplay.SLOT_KEY` and asserts the same phase exclusivity (`prefillIdx` < `thinkingIdx`, slot cleared `undefined` on settle) plus the pi-ai-side assertion that the response carries both a `thinking` block and the answer text.
+3. **`createProgressFetch` unchanged.** It already had the generalised `onChunk` + `onReset` signature from ticket 02, so "generalise the teed fetch" reduced to wiring: one teed stream now feeds both trackers (both `reset()` per fetch, both `finish()` on settle) inside `createProgressStreamSimple`.
+
+**Verified:** the ticket example renders exactly (`Working... ~1.2k tok · 8s` with an injected clock); token estimate is `round(chars/4)` with the `k`-suffix formatting from ticket 02's `formatTokenCount`; elapsed time is client-timed from the first reasoning delta via the injectable `now()`; field priority is `reasoning_content` > `reasoning` > `reasoning_text`; the counter clears on the first non-empty `content` delta and on `finish()`; a tool-call delta switches to generic `Working...` and suppresses later reasoning stats; split-chunk reassembly, retry `reset()`, and the full prefill→thinking→answer→clear phase sequence through the teed stream all pass.
