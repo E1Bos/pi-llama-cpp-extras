@@ -1,0 +1,32 @@
+{
+  "name": "pi-llama-cpp-extras",
+  "version": "0.1.0",
+  "description": "Optional extras for pi-llama-cpp: live progress display for llama.cpp requests",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "llama-cpp"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.84.0",
+    "@earendil-works/pi-coding-agent": ">=0.84.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@types/node": "^26.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

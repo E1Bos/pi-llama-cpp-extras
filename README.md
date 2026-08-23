@@ -2,6 +2,8 @@
 
 Optional extras for the [pi-llama-cpp](https://github.com/gsanhueza/pi-llama-cpp) Pi extension. This package installs *alongside* pi-llama-cpp (it does not fork or replace it) and adds opt-in behavior that not every user wants.
 
+**Requires `pi-llama-cpp` to be installed.** It provides the `llama-server=<url>` providers this package attaches to; on its own there is nothing to attach to.
+
 ## First extra: progress display
 
 While a prompt is being prefilled and while the model reasons, show live progress in a keyed UI slot (a status line or widget), without fighting `pi-llama-cpp-stats` for the shared working message.
