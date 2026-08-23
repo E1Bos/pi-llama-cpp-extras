@@ -2,7 +2,7 @@
 
 Tee the raw SSE of a llama.cpp request, parse `prompt_progress`, and render a live progress bar in a keyed UI slot while prefilling.
 
-Status: open
+Status: done
 
 Depends on ticket 01 (package shell).
 
@@ -17,10 +17,10 @@ The source of truth is **pi-llama-one** (`~/Code/pi-llama-one`), fully implement
 
 ## Acceptance
 
-- [ ] While prefilling, the keyed UI slot shows the pi-llama-cpp-stats format: `Prefilling... ▓▓▓░░░ 40% · 3.2s · 12.3 tok/s` (20-char bar, space-padded percentage, ETA, live tok/s).
-- [ ] Progress comes from the request's own SSE (a teed `options.fetch`), not a global `fetch` monkey-patch.
-- [ ] The UI slot returns to default when prefill ends (`processed === total`), when the stream settles, and on abort.
-- [ ] The display writes to a **keyed UI slot** (`ctx.ui.setStatus` / `setWidget`), not the shared working message, so it does not fight `pi-llama-cpp-stats`.
+- [x] While prefilling, the keyed UI slot shows the pi-llama-cpp-stats format: `Prefilling... ▓▓▓░░░ 40% · 3.2s · 12.3 tok/s` (20-char bar, space-padded percentage, ETA, live tok/s).
+- [x] Progress comes from the request's own SSE (a teed `options.fetch`), not a global `fetch` monkey-patch.
+- [x] The UI slot returns to default when prefill ends (`processed === total`), when the stream settles, and on abort.
+- [x] The display writes to a **keyed UI slot** (`ctx.ui.setStatus` / `setWidget`), not the shared working message, so it does not fight `pi-llama-cpp-stats`.
 
 ## TDD seams
 
@@ -37,3 +37,18 @@ The source of truth is **pi-llama-one** (`~/Code/pi-llama-one`), fully implement
 - **Retry safety:** the tracker is reset at the start of each `fetch` call (`onReset`), so a retried request starts fresh.
 
 ## Comments
+
+### 2026-08-23 — implemented (commit `1455921`)
+
+Lifted from the fork at commit `67f09e4` (the prefill-only source; the fork's HEAD has ticket 03's thinking tracker layered on top, which is out of scope here). TDD in four red→green rounds: tracker → display → `teeSse`/`createProgressFetch` → `createProgressStreamSimple`. 25/25 tests, `tsc --noEmit` clean.
+
+**Deviations from the literal reference (all mandated or pinned by this ticket):**
+
+1. **Keyed slot instead of the working message.** `WorkingMessageDisplay` targets `ctx.ui.setStatus(key, text)` (key `pi-llama-cpp-extras:progress`, `SLOT_KEY`) rather than `ui.setWorkingMessage`, per the design note and acceptance criterion 4. `setWidget` was not used: `setStatus` is the keyed single-line slot, which is all a progress line needs. The class keeps the fork's name for seam continuity; the doc comment records the name/target mismatch.
+2. **Omitted the fork's `attachToWorkingMessage` transient path.** It exists for pi-llama-cpp's model-loading indicator ("Loading model...") — a pi-llama-cpp feature this package's tickets don't cover. Ticket 05 can re-add an equivalent if `return_progress` scoping needs it.
+3. **`formatTokenCount` is exported but unused in this ticket.** The ticket's lift list includes it and ticket 03's thinking tracker consumes it; the doc comment records this.
+4. **Abort test added beyond the fork's suite.** Acceptance criterion 3 explicitly requires slot-clear on abort. Verified against pi-ai `0.84.2` source: an aborted signal makes the openai-completions stream push an `error` event (`stopReason: "aborted"`) and `stream.end()`, and `stream.result()` resolves on that terminal event, so the reference `result().then(() => { prefill.finish(); display.finish(); })` chain runs on completion, error, and abort alike. Pinned by a new abort test (fake fetch + `AbortController`).
+
+**Verified:** tracker renders the exact reference format (`Prefilling... [20-char bar]  NN% · <eta> · <tok/s>`, rate-curve-fit ETA, delta tok/s, split-chunk reassembly, retry reset); the teed fetch is byte-identical pass-through with per-fetch `onReset`; the slot is cleared on prefill end, stream settle, and abort; the display writes only to the keyed slot (tested against a ctx exposing both `setStatus` and `setWorkingMessage`).
+
+**Entry unchanged on purpose:** `src/index.ts` stays a placeholder. Per ticket 01's comment, the entry is wired to pi-llama-cpp's providers in ticket 04 (provider discovery) / ticket 05 (`return_progress`); this ticket delivers the modules and their seams only. Ticket 03 extends the tee with the thinking tracker.
