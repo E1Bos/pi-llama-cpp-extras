@@ -10,12 +10,11 @@ import type {
 	ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import entry, { createProgressEntry } from "../src/index";
-import { WorkingMessageDisplay } from "../src/progress";
 
 // --- fakes -----------------------------------------------------------------
 
 type FakeCtx = {
-	ui?: { setStatus: (key: string, text: string | undefined) => void };
+	ui?: { setWorkingMessage: (message?: string) => void };
 	hasUI?: boolean;
 	model?: { provider: string } | undefined;
 };
@@ -119,7 +118,7 @@ describe("extension entry", () => {
 		}
 	});
 
-	it("attaches the display on before_agent_start and turn_start so the slot is live for the turn", async () => {
+	it("attaches the display on before_agent_start and turn_start so the working message is live for the turn", async () => {
 		const sse =
 			chunk({}, { total: 100, processed: 0, time_ms: 0 }) +
 			chunk({ content: "hi" }) +
@@ -137,9 +136,9 @@ describe("extension entry", () => {
 			env: {},
 		})(pi);
 
-		const statuses: Array<[string, string | undefined]> = [];
+		const workingMessages: Array<string | undefined> = [];
 		const ctx: FakeCtx = {
-			ui: { setStatus: (key, text) => statuses.push([key, text]) },
+			ui: { setWorkingMessage: (message) => workingMessages.push(message) },
 			hasUI: true,
 		};
 
@@ -148,7 +147,7 @@ describe("extension entry", () => {
 		handlers.get("turn_start")!({}, ctx);
 
 		// A request on the default-server provider tees progress into the
-		// attached slot.
+		// attached working message line.
 		const streamSimple = registrations[0].config
 			.streamSimple as (
 			model: Model<"openai-completions">,
@@ -160,14 +159,12 @@ describe("extension entry", () => {
 		expect(result.stopReason).toBe("stop");
 		fetchSpy.mockRestore();
 
-		const slotWrites = statuses.filter(
-			([key]) => key === WorkingMessageDisplay.SLOT_KEY,
-		);
 		expect(
-			slotWrites.some(([, text]) => typeof text === "string" && text.startsWith("Prefilling...")),
+			workingMessages.some((m) => typeof m === "string" && m.startsWith("Prefilling...")),
 		).toBe(true);
-		// The slot is cleared once the stream settles.
-		expect(statuses.at(-1)).toEqual([WorkingMessageDisplay.SLOT_KEY, undefined]);
+		// The working message is cleared once the stream settles, restoring
+		// pi's default text.
+		expect(workingMessages.at(-1)).toBeUndefined();
 	});
 
 	it("scopes return_progress: true onto llama-server requests and passes others through", () => {

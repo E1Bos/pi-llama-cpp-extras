@@ -222,11 +222,9 @@ export class PrefillProgressTracker {
 }
 
 /**
- * Bridge from the provider stream to a keyed UI slot (`ui.setStatus`),
- * keeping progress text off the shared working message so it never fights
- * other extensions or pi's own loading text. The name is retained from the
- * fork for seam continuity, but the target is the keyed slot, not
- * `setWorkingMessage`.
+ * Bridge from the provider stream to pi's working message line
+ * (`ui.setWorkingMessage`) - the `\u243C Working...` spinner line where pi's
+ * own default text sits. Clearing it (undefined) restores pi's default.
  *
  * The provider stream has no `ExtensionContext`, so the extension attaches
  * the UI on events that carry `ctx` (see the extension entry). Identical
@@ -350,19 +348,18 @@ export class ThinkingProgressTracker {
 
 export class WorkingMessageDisplay {
 	/**
-	 * Keyed status slot for progress, namespaced so it doesn't collide with
-	 * other extensions. Shared across the progress phases (ticket 03's
-	 * thinking counter reuses it); the phases never overlap, so a single
-	 * slot is enough.
+	 * Target: pi's working message line - the `\u243C Working...` spinner line
+	 * (`ui.setWorkingMessage`), where pi's own default `Working...` text sits.
+	 * Shared across the progress phases (ticket 03's thinking counter reuses
+	 * it); the phases never overlap, so a single message is enough. Clearing
+	 * it restores pi's default working message text.
 	 */
-	static readonly SLOT_KEY = "pi-llama-cpp-extras:progress";
-
-	private ui: { setStatus(key: string, text: string | undefined): void } | null = null;
+	private ui: { setWorkingMessage(message?: string): void } | null = null;
 	private active = false;
 	private finished = false;
 	private lastShown: string | null | undefined;
 
-	attach(ctx: { ui: { setStatus(key: string, text: string | undefined): void }; hasUI: boolean }): void {
+	attach(ctx: { ui: { setWorkingMessage(message?: string): void }; hasUI: boolean }): void {
 		this.ui = ctx.ui;
 		this.active = ctx.hasUI;
 	}
@@ -372,18 +369,18 @@ export class WorkingMessageDisplay {
 		this.finished = false;
 	}
 
-	/** Settle the request: clear the slot and stop accepting updates. */
+	/** Settle the request: clear the working message and stop accepting updates. */
 	finish(): void {
 		this.set(null);
 		this.finished = true;
 	}
 
-	/** Set the progress text; `null` clears the slot. No-op if unchanged or settled. */
+	/** Set the working message text; `null` clears it. No-op if unchanged or settled. */
 	set(message: string | null): void {
 		if (this.finished) return;
 		if (message === this.lastShown) return;
 		this.lastShown = message;
 		if (!this.active || !this.ui) return;
-		this.ui.setStatus(WorkingMessageDisplay.SLOT_KEY, message ?? undefined);
+		this.ui.setWorkingMessage(message ?? undefined);
 	}
 }
