@@ -1,20 +1,50 @@
 # pi-llama-cpp-extras
 
-Optional extras for the [pi-llama-cpp](https://github.com/gsanhueza/pi-llama-cpp) Pi extension. This package installs *alongside* pi-llama-cpp (it does not fork or replace it) and adds opt-in behavior that not every user wants.
+Extras for the [pi-llama-cpp](https://github.com/gsanhueza/pi-llama-cpp) Pi extension.
 
-**Requires `pi-llama-cpp` (`>= 0.10.0`) to be installed.** It provides the llama.cpp providers this package attaches to; on its own there is nothing to attach to.
+Requires `pi-llama-cpp >= 0.10.0` to be installed. This package installs alongside pi-llama-cpp and adds opt-in extras without forking it.
 
-## First extra: progress display
+## Demo
 
-While a prompt is being prefilled and while the model reasons, show live progress in a keyed UI slot (a status line or widget), without fighting `pi-llama-cpp-stats` for the shared working message.
+![Live progress display](docs/media/progress-demo.gif)
 
-- **Prefill.** `Prefilling... ▓▓▓░░░ 40% · 3.2s · 12.3 tok/s` (driven by `prompt_progress` in the SSE).
-- **Thinking.** `Working... ~1.2k tok · 8s` (driven by reasoning-delta volume).
+## Live progress display
 
-## How it coexists with pi-llama-cpp
+Shows live progress on pi's working message line (`⏼ Working…`) while a llama.cpp request is running.
 
-Upstream pi-llama-cpp registers one provider per llama.cpp server and does **not** register a `streamSimple`. This package reconstructs the same server list from the same settings (`LLAMA_SERVER_URL` env → `llamaSettings.servers[].url` → legacy `llamaServerUrl` → default) and registers a teed `streamSimple` on the same providerIds (`llamaSettings.servers[].id` when configured, else `llama-server=<url>`). Pi merges provider registrations by key, so the package's `streamSimple` composes with pi-llama-cpp's base provider without either one knowing about the other.
+- **Prefill.** Progress bar driven by llama.cpp's `prompt_progress` SSE field:
+  `Prefilling… ▓▓▓░░░ 40% · 3.2s · 1012.7 tok/s`
+- **Thinking.** Token counter while the model reasons:
+  `Working… ~1.2k tok · 8s`
 
-## Status
+No configuration needed. The display appears automatically on any request sent to a llama.cpp server managed by pi-llama-cpp and clears itself when the request finishes. With multiple servers configured, the line reflects whichever request is active.
 
-In progress. The design is in `.scratch/progress/spec.md`; the work items are in `.scratch/progress/issues/`.
+## Installation
+
+```bash
+pi install npm:pi-llama-cpp-extras
+```
+
+No settings of its own. It reads the same server configuration pi-llama-cpp uses (`llamaSettings.servers` or the legacy `llamaServerUrl`).
+
+## Requirements
+
+- pi `>= 0.84.0`
+- pi-llama-cpp `>= 0.10.0`
+
+## How it works
+
+pi-llama-cpp registers one provider per llama.cpp server without a `streamSimple`. This package reconstructs the same server list from the same settings and registers a teed `streamSimple` on the same provider IDs. Pi's provider merge composes the two, so requests stream through this package's wrapper which parses progress out of the SSE and passes the rest through.
+
+## Development
+
+```bash
+npm test
+npm run typecheck
+```
+
+Tested on pi `0.84.x` and pi-llama-cpp `0.10.x`.
+
+## License
+
+MIT

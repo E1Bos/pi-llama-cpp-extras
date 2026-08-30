@@ -9,6 +9,11 @@
     "llama-cpp"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/E1Bos/pi-llama-cpp-extras"
+  },
+  "homepage": "https://github.com/E1Bos/pi-llama-cpp-extras#readme",
   "files": [
     "src",
     "README.md",
