@@ -23,7 +23,8 @@
   "pi": {
     "extensions": [
       "./src/index.ts"
-    ]
+    ],
+    "image": "https://github.com/E1Bos/pi-llama-cpp-extras/raw/main/docs/media/progress-demo.gif"
   },
   "scripts": {
     "test": "vitest run",
