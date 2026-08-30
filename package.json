@@ -1,6 +1,6 @@
 {
   "name": "pi-llama-cpp-extras",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional extras for pi-llama-cpp: live progress display for llama.cpp requests",
   "keywords": [
     "pi",
