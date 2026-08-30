@@ -39,6 +39,10 @@ TDD in one red→green round: scope behavior test in `tests/entry.test.ts` → h
 **Verified:**
 
 - **Acceptance 1** — the behavior test asserts a `llama-server=<url>` model gets a new payload object with `return_progress: true` and that the original payload is not mutated.
+
+### 2026-08-23 — scoping superseded by ticket 07
+
+With pi-llama-cpp `0.10.0`, llama.cpp models' provider can be a custom `llamaSettings.servers[].id` (e.g. `local`), so the `llama-server=` prefix check misses them. `src/index.ts` now scopes `return_progress: true` by membership in the set of resolved providerIds.
 - **Acceptance 2** — non-llama (`anthropic`) and missing-model requests pass through by identity (the same object, unchanged), and an anchored-prefix negative (`x-llama-server=...`) is not scoped.
 - **Acceptance 3** — the flag→SSE half is llama.cpp's documented behavior (`prompt_progress` only emitted when requested) and is verified by design: ticket 02's tests cover the SSE→bar direction (`prompt_progress` drives `PrefillProgressTracker`), this ticket covers the request-flag direction.
 - **Chaining** — verified in pi-coding-agent `0.84.2` source (`dist/core/extensions/runner.js` `emitBeforeProviderRequest`): handlers run across extensions in order, each receiving `{type, payload: currentPayload}`, and a non-`undefined` handler result replaces `currentPayload` — so our augmented payload reaches downstream handlers and the outgoing request.

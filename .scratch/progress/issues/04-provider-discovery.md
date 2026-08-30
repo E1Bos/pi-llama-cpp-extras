@@ -49,3 +49,7 @@ TDD in two red→green rounds: cascade unit tests → `src/discovery.ts`; entry 
 - **Acceptance 4** — the behavior test attaches via both captured event handlers, then runs the registered provider's `streamSimple` against a stubbed fetch and asserts the keyed slot receives a `Prefilling...` write and is cleared (`undefined`) on settle.
 
 **Cascade fidelity** — `resolveJoinedLlamaServerUrl` mirrors `ConfigResolver.extractJoinedUrls` (first non-empty wins, empty string = unset, no merging) and `splitLlamaServerUrls` mirrors `resolveUrls` (split on `;`, trim, drop empty, strip trailing slashes) — the trailing-slash stripping is load-bearing because pi-llama-cpp builds providerIds from the processed URLs.
+
+### 2026-08-23 — superseded by ticket 07
+
+pi-llama-cpp `0.10.0` changed the cascade (env → `llamaSettings.servers[].url` → legacy → default) and made the providerId overridable via `llamaSettings.servers[].id`. See `.scratch/progress/issues/07-v010-settings-layout.md`.

@@ -4,15 +4,15 @@
 
 ## Why a separate package
 
-pi-llama-cpp registers one provider per llama.cpp server, with the providerId `llama-server=<baseUrl>`. The upstream package does **not** register a `streamSimple`; its provider config is the plain `{name, baseUrl, api, apiKey, models}` (verified against the published `pi-llama-cpp@0.9.2`).
+pi-llama-cpp registers one provider per llama.cpp server. Since `0.10.0`, the providerId is `server.id` when a `llamaSettings.servers[].id` is configured, and `llama-server=<baseUrl>` otherwise. The upstream package does **not** register a `streamSimple`; its provider config is the plain `{name, baseUrl, api, apiKey, models}` (verified against the published `pi-llama-cpp@0.10.0`).
 
 Pi merges provider registrations by key. When two extensions register the same providerId, the later one's *defined* keys overlay the earlier and everything else is kept. So this package can register `{api: "openai-completions", streamSimple: <wrapper>}` on a `llama-server=<url>` provider and compose with pi-llama-cpp's base provider, without forking pi-llama-cpp and without either package knowing about the other. The display is opt-in: only users who install `pi-llama-cpp-extras` get it, and it does not replace or conflict with upstream pi-llama-cpp.
 
 ## How it works
 
-1. **Discovery.** Reconstruct the llama.cpp server URLs the same way pi-llama-cpp does: project `.pi/settings.json` `llamaServerUrl` → `LLAMA_SERVER_URL` env → global settings `llamaServerUrl` → default `http://127.0.0.1:8080`, split on `;`. Compute the providerId `llama-server=<url>` for each.
+1. **Discovery.** Reconstruct the llama.cpp servers the same way pi-llama-cpp `0.10.0` does: `LLAMA_SERVER_URL` env → `llamaSettings.servers[].url` → legacy top-level `llamaServerUrl` → default `http://127.0.0.1:8080` (first non-empty source wins, split on `;`, settings shallow-merged project-over-global). Compute each providerId as the matching `llamaSettings.servers[].id`, else `llama-server=<url>` (see ticket 07).
 2. **Tee the SSE.** Register `streamSimple` on each `llama-server=<url>` provider. The wrapper wraps pi-ai's built-in openai-completions `streamSimple` (`@earendil-works/pi-ai/compat`) with a teed `fetch`, so the raw SSE is parsed for progress while the built-in parser is preserved. No global `fetch` monkey-patch.
-3. **Request flag.** Add `return_progress: true` to requests that go to a llama.cpp model (via `before_provider_request`, scoped by `ctx.getModel().provider` starting with `llama-server=`), so the SSE carries `prompt_progress`.
+3. **Request flag.** Add `return_progress: true` to requests that go to a llama.cpp model (via `before_provider_request`, scoped by `ctx.model.provider` membership in the resolved providerIds, custom ids included), so the SSE carries `prompt_progress`.
 4. **Display.** Render the progress in a **keyed UI slot** (`ctx.ui.setStatus` / `setWidget`), not the shared working message. The working message is one last-write-wins slot that `pi-llama-cpp-stats` also writes; a keyed slot is independent per key, so the two never fight.
 
 ## The two phases
