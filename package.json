@@ -16,6 +16,7 @@
   "homepage": "https://github.com/E1Bos/pi-llama-cpp-extras#readme",
   "files": [
     "src",
+    "docs/media",
     "README.md",
     "LICENSE",
     "tsconfig.json"
