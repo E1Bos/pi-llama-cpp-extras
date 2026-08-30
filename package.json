@@ -9,6 +9,12 @@
     "llama-cpp"
   ],
   "license": "MIT",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "tsconfig.json"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts"
