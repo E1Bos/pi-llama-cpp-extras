@@ -2,7 +2,7 @@
 
 Optional extras for the [pi-llama-cpp](https://github.com/gsanhueza/pi-llama-cpp) Pi extension. This package installs *alongside* pi-llama-cpp (it does not fork or replace it) and adds opt-in behavior that not every user wants.
 
-**Requires `pi-llama-cpp` to be installed.** It provides the `llama-server=<url>` providers this package attaches to; on its own there is nothing to attach to.
+**Requires `pi-llama-cpp` (`>= 0.10.0`) to be installed.** It provides the llama.cpp providers this package attaches to; on its own there is nothing to attach to.
 
 ## First extra: progress display
 
@@ -13,7 +13,7 @@ While a prompt is being prefilled and while the model reasons, show live progres
 
 ## How it coexists with pi-llama-cpp
 
-Upstream pi-llama-cpp registers one provider per llama.cpp server (`llama-server=<url>`) and does **not** register a `streamSimple`. This package registers a teed `streamSimple` on those same providerIds. Pi merges provider registrations by key, so the package's `streamSimple` composes with pi-llama-cpp's base provider without either one knowing about the other.
+Upstream pi-llama-cpp registers one provider per llama.cpp server and does **not** register a `streamSimple`. This package reconstructs the same server list from the same settings (`LLAMA_SERVER_URL` env → `llamaSettings.servers[].url` → legacy `llamaServerUrl` → default) and registers a teed `streamSimple` on the same providerIds (`llamaSettings.servers[].id` when configured, else `llama-server=<url>`). Pi merges provider registrations by key, so the package's `streamSimple` composes with pi-llama-cpp's base provider without either one knowing about the other.
 
 ## Status
 

@@ -97,18 +97,25 @@ describe("extension entry", () => {
 		expect(typeof entry).toBe("function");
 	});
 
-	it("registers a streamSimple overlay on each llama-server=<url> provider", () => {
+	it("registers a streamSimple overlay on each resolved providerId (0.10.0 layout)", () => {
 		const { pi, registrations } = makeFakePi();
 		createProgressEntry({
-			projectUrl: () => null,
-			globalUrl: () => "http://global:8080; http://global:8081",
+			projectSettings: () => null,
+			globalSettings: () => ({
+				llamaSettings: {
+					servers: [
+						{ url: "http://127.0.0.1:8080", id: "local", name: "Local Server" },
+						{ url: "http://10.0.0.5:8080", name: "Remote Server" },
+					],
+				},
+			}),
 			env: {},
 		})(pi);
 
-		// One provider per URL in the cascade, pi-llama-cpp's providerId format.
+		// Custom id where configured, prefixed id otherwise.
 		expect(registrations.map((r) => r.id)).toEqual([
-			"llama-server=http://global:8080",
-			"llama-server=http://global:8081",
+			"local",
+			"llama-server=http://10.0.0.5:8080",
 		]);
 		for (const r of registrations) {
 			// Only the overlay keys: the merge keeps pi-llama-cpp's base config.
@@ -116,6 +123,22 @@ describe("extension entry", () => {
 			expect(r.config.api).toBe("openai-completions");
 			expect(typeof r.config.streamSimple).toBe("function");
 		}
+	});
+
+	it("keeps the prefixed providerId for legacy llamaServerUrl configs", () => {
+		const { pi, registrations } = makeFakePi();
+		createProgressEntry({
+			projectSettings: () => null,
+			globalSettings: () => ({
+				llamaServerUrl: "http://global:8080; http://global:8081",
+			}),
+			env: {},
+		})(pi);
+
+		expect(registrations.map((r) => r.id)).toEqual([
+			"llama-server=http://global:8080",
+			"llama-server=http://global:8081",
+		]);
 	});
 
 	it("attaches the display on before_agent_start and turn_start so the working message is live for the turn", async () => {
@@ -131,8 +154,8 @@ describe("extension entry", () => {
 
 		const { pi, registrations, handlers } = makeFakePi();
 		createProgressEntry({
-			projectUrl: () => null,
-			globalUrl: () => null,
+			projectSettings: () => null,
+			globalSettings: () => null,
 			env: {},
 		})(pi);
 
@@ -167,30 +190,45 @@ describe("extension entry", () => {
 		expect(workingMessages.at(-1)).toBeUndefined();
 	});
 
-	it("scopes return_progress: true onto llama-server requests and passes others through", () => {
+	it("scopes return_progress: true onto resolved provider ids and passes others through", () => {
 		const { pi, handlers } = makeFakePi();
 		createProgressEntry({
-			projectUrl: () => null,
-			globalUrl: () => null,
+			projectSettings: () => null,
+			globalSettings: () => ({
+				llamaSettings: {
+					servers: [
+						{ url: "http://127.0.0.1:8080", id: "local" },
+						{ url: "http://10.0.0.5:8080" },
+					],
+				},
+			}),
 			env: {},
 		})(pi);
 
 		const handler = handlers.get("before_provider_request");
 		expect(handler).toBeDefined();
 
-		// A llama-server request gets the flag on a new payload object.
-		const llamaEvent: BeforeProviderRequestEvent = {
+		// A custom-id provider gets the flag on a new payload object.
+		const customEvent: BeforeProviderRequestEvent = {
 			type: "before_provider_request",
 			payload: { messages: [] },
 		};
-		const result = handler!(llamaEvent, {
-			model: { provider: "llama-server=http://127.0.0.1:8080" },
-		});
+		const result = handler!(customEvent, { model: { provider: "local" } });
 		expect(result).toEqual({ messages: [], return_progress: true });
 		// The original payload is not mutated.
-		expect(llamaEvent.payload).toEqual({ messages: [] });
+		expect(customEvent.payload).toEqual({ messages: [] });
 
-		// Non-llama requests pass through unchanged (identity).
+		// A prefixed provider of the same configured server gets it too.
+		const prefixedEvent: BeforeProviderRequestEvent = {
+			type: "before_provider_request",
+			payload: { messages: [] },
+		};
+		expect(
+			handler!(prefixedEvent, { model: { provider: "llama-server=http://10.0.0.5:8080" } }),
+		).toEqual({ messages: [], return_progress: true });
+
+		// Non-llama requests pass through unchanged (identity), including
+		// ids that merely contain "llama-server=" or resemble a resolved id.
 		const foreignEvent: BeforeProviderRequestEvent = {
 			type: "before_provider_request",
 			payload: { messages: [] },
@@ -198,17 +236,15 @@ describe("extension entry", () => {
 		expect(handler!(foreignEvent, { model: { provider: "anthropic" } })).toBe(
 			foreignEvent.payload,
 		);
+		expect(
+			handler!(foreignEvent, { model: { provider: "x-llama-server=http://10.0.0.5:8080" } }),
+		).toBe(foreignEvent.payload);
+		expect(handler!(foreignEvent, { model: { provider: "remotex" } })).toBe(
+			foreignEvent.payload,
+		);
 
 		// A missing model passes through unchanged.
 		expect(handler!(foreignEvent, { model: undefined })).toBe(foreignEvent.payload);
-
-		// The prefix match is anchored: a provider that merely contains
-		// `llama-server=` is not a llama-server provider.
-		expect(
-			handler!(foreignEvent, {
-				model: { provider: "x-llama-server=http://127.0.0.1:8080" },
-			}),
-		).toBe(foreignEvent.payload);
 	});
 
 	it("runs the default entry against a capturing pi without throwing", () => {
@@ -217,7 +253,6 @@ describe("extension entry", () => {
 		// Whatever the machine's settings are, the cascade resolves to at
 		// least the default server.
 		expect(registrations.length).toBeGreaterThanOrEqual(1);
-		for (const r of registrations) expect(r.id.startsWith("llama-server=")).toBe(true);
 		expect(handlers.has("before_agent_start")).toBe(true);
 		expect(handlers.has("turn_start")).toBe(true);
 	});
