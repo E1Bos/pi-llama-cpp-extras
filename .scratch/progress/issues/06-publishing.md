@@ -18,7 +18,7 @@ Depends on the maintainer approving the package name in the upstream issue (the 
 
 1. **Prereqs**: npm account (npmjs.com), `npm login` (browser flow; if the account has 2FA, `npm publish` prompts for an OTP). Confirm the name is free: `npm view pi-llama-cpp-extras` (currently 404, verified 2026-08-23).
 2. **Prepare `package.json`**:
-   - Add `files: ["src", "README.md", "LICENSE", "tsconfig.json"]` so the tarball stays slim (without it, npm packs the whole directory: `tests/`, `docs/`, `.scratch/`, `HANDOFF.md`, `package-lock.json`). `node_modules` is always excluded.
+   - Add `files: ["src", "README.md", "LICENSE", "tsconfig.json"]` so the tarball stays slim (without it, npm packs the whole directory: `tests/`, `docs/`, `.scratch/`, `package-lock.json`). `node_modules` is always excluded.
    - Add a `LICENSE` file (MIT text, e.g. copy from `~/Code/pi-llama-cpp/LICENSE.md`; `license: MIT` is already declared but npm warns without the file).
    - Add `repository` (and optionally `author`) metadata.
    - Leave `devDependencies` and `peerDependencies` as they are (see above).
