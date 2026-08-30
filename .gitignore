@@ -10,3 +10,12 @@ dist
 
 # Tests
 coverage
+
+# Local agent workspace (issue tracker, specs)
+.scratch
+
+# Agent instructions (local-only)
+AGENTS.md
+
+# Agent docs (local-only)
+docs/agents
